@@ -59,51 +59,6 @@ uint32_t si5351denomi = 1000000;  //Multicounter denominator one million
 uint32_t si5351divider;           // VCO output divider integer part
 Adafruit_SI5351 clockgen = Adafruit_SI5351();
 
-void setup() {
-
-  Serial.begin(115200);
-  Serial.println("start");
-
-  EEPROM.begin(56);
-  walkingFreq = EEPROM.readLong64(8);
-  Serial.print("read walkingFreq:");
-  Serial.println(walkingFreq);
-
-  radix = EEPROM.readInt(0);
-  Serial.print("read radix:");
-  Serial.println(radix);
-
-  tft.begin();
-  tft.writecommand(0x11);
-  tft.setRotation(3);
-  tft.fillScreen(TFT_BLACK);
-
-  tft.setTextSize(0);
-  tft.setTextColor(TFT_WHITE, TFT_BLACK);
-
-  spr.createSprite(163, 55);
-  spr.setTextColor(color1, TFT_BLACK);
-
-  drawSprite();
-  /* Initialise the sensor */
-  if (clockgen.begin() != ERROR_NONE) {
-    /* There was a problem detecting the IC ... check your connections */
-    Serial.print("Ooops, no Si5351 detected ... Check your wiring or I2C ADDR!");
-    while (1)
-      ;
-  }
-
-  if (radix != 10000 && radix != 1000 && radix != 500 && radix != 100)
-    radix = 1000;
-  setFrequency();
-
-  button.begin(12);
-  tft.drawString(AmateurBand[bandindex].band, 115, 53, 2);
-
-  pinMode(RELAY_BAND, OUTPUT);
-  digitalWrite(RELAY_BAND, LOW);
-}
-
 void count_frequency() {
   uint16_t f, g;
 
@@ -117,60 +72,12 @@ void count_frequency() {
 
   Serial.println(f = vfo / 1000000);  // printtaa f 145.XXX.XXX
 }
-
-void loop(void) {
-  readEncoder();
-  button.loop();
-  if (button.wasPressed()) {
-    Serial.println("click ");
-    switch (button.read()) {
-      case single_click:
-        Serial.println("single");
-        StepClick();
-        break;
-      case double_click:
-        Serial.println("double");
-        break;
-      case triple_click:
-        Serial.println("triple");
-        break;
-      case long_click:
-        Serial.println("looong");
-        if (bandindex == 0) {
-          AmateurBand[bandindex].start = walkingFreq;
-          bandindex = 1;
-          walkingFreq =  AmateurBand[bandindex].start;
-          tft.drawString(AmateurBand[bandindex].band, 115, 53, 2);
-          digitalWrite(RELAY_BAND, HIGH);
-        } else if (bandindex == 1) {
-          AmateurBand[bandindex].start = walkingFreq;
-          bandindex = 0;
-          walkingFreq =  AmateurBand[bandindex].start;
-          tft.drawString(AmateurBand[bandindex].band, 115, 53, 2);
-          digitalWrite(RELAY_BAND, LOW);
-        }
-        Serial.print("bandindex=");Serial.println(bandindex);
-        drawSprite();
-        break;
-    }
-  }
-}
-
-void readEncoder() {
-  static int pos = 0;
-  encoder.tick();
-
-  int newPos = encoder.getPosition();
-  if (pos != newPos) {
-    if (newPos > pos)
-      walkingFreq = walkingFreq - radix;
-    if (walkingFreq < AmateurBand[bandindex].minimal) walkingFreq = AmateurBand[bandindex].minimal;
-    if (newPos < pos)
-      walkingFreq = walkingFreq + radix;
-    if (walkingFreq > AmateurBand[bandindex].maximal) walkingFreq = AmateurBand[bandindex].maximal;
-    pos = newPos;
-    drawSprite();
-  }
+void setFrequency() {
+  count_frequency();
+  clockgen.setupPLL(SI5351_PLL_A, (si5351multi_int), (si5351nomi), (si5351denomi));  // write si5351ctl divider word
+                                                                                     // clockgen.setupMultisynthInt(0, SI5351_PLL_A, SI5351_MULTISYNTH_DIV_6);
+  clockgen.setupMultisynth(1, SI5351_PLL_A, (si5351divider), 0, 1);
+  clockgen.enableOutputs(true);
 }
 
 void drawStep(int step, uint16_t bgcolor) {
@@ -274,10 +181,110 @@ Serial.print("write radix:");
 Serial.println(radix);
 }
 
-void setFrequency() {
-  count_frequency();
-  clockgen.setupPLL(SI5351_PLL_A, (si5351multi_int), (si5351nomi), (si5351denomi));  // write si5351ctl divider word
-                                                                                     // clockgen.setupMultisynthInt(0, SI5351_PLL_A, SI5351_MULTISYNTH_DIV_6);
-  clockgen.setupMultisynth(1, SI5351_PLL_A, (si5351divider), 0, 1);
-  clockgen.enableOutputs(true);
+void setup() {
+
+  Serial.begin(115200);
+  Serial.println("start");
+
+  EEPROM.begin(56);
+  walkingFreq = EEPROM.readLong64(8);
+  Serial.print("read walkingFreq:");
+  Serial.println(walkingFreq);
+
+  radix = EEPROM.readInt(0);
+  Serial.print("read radix:");
+  Serial.println(radix);
+
+  tft.begin();
+  tft.writecommand(0x11);
+  tft.setRotation(3);
+  tft.fillScreen(TFT_BLACK);
+
+  tft.setTextSize(0);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+
+  spr.createSprite(163, 55);
+  spr.setTextColor(color1, TFT_BLACK);
+
+  drawSprite();
+  /* Initialise the sensor */
+  if (clockgen.begin() != ERROR_NONE) {
+    /* There was a problem detecting the IC ... check your connections */
+    Serial.print("Ooops, no Si5351 detected ... Check your wiring or I2C ADDR!");
+    while (1)
+      ;
+  }
+
+  if (radix != 10000 && radix != 1000 && radix != 500 && radix != 100)
+    radix = 1000;
+  setFrequency();
+
+  button.begin(12);
+  tft.drawString(AmateurBand[bandindex].band, 115, 53, 2);
+
+  pinMode(RELAY_BAND, OUTPUT);
+  digitalWrite(RELAY_BAND, LOW);
 }
+
+void readEncoder() {
+  static int pos = 0;
+  encoder.tick();
+
+  int newPos = encoder.getPosition();
+  if (pos != newPos) {
+    if (newPos > pos)
+      walkingFreq = walkingFreq - radix;
+    if (walkingFreq < AmateurBand[bandindex].minimal) walkingFreq = AmateurBand[bandindex].minimal;
+    if (newPos < pos)
+      walkingFreq = walkingFreq + radix;
+    if (walkingFreq > AmateurBand[bandindex].maximal) walkingFreq = AmateurBand[bandindex].maximal;
+    pos = newPos;
+    drawSprite();
+  }
+}
+
+
+void loop(void) {
+  readEncoder();
+  button.loop();
+  if (button.wasPressed()) {
+    Serial.println("click ");
+    switch (button.read()) {
+      case single_click:
+        Serial.println("single");
+        StepClick();
+        break;
+      case double_click:
+        Serial.println("double");
+        break;
+      case triple_click:
+        Serial.println("triple");
+        break;
+      case long_click:
+        Serial.println("looong");
+        if (bandindex == 0) {
+          AmateurBand[bandindex].start = walkingFreq;
+          bandindex = 1;
+          walkingFreq =  AmateurBand[bandindex].start;
+          tft.drawString(AmateurBand[bandindex].band, 115, 53, 2);
+          digitalWrite(RELAY_BAND, HIGH);
+        } else if (bandindex == 1) {
+          AmateurBand[bandindex].start = walkingFreq;
+          bandindex = 0;
+          walkingFreq =  AmateurBand[bandindex].start;
+          tft.drawString(AmateurBand[bandindex].band, 115, 53, 2);
+          digitalWrite(RELAY_BAND, LOW);
+        }
+        Serial.print("bandindex=");Serial.println(bandindex);
+        drawSprite();
+        break;
+    }
+  }
+}
+
+
+
+
+
+
+
